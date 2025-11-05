@@ -1,0 +1,205 @@
+---
+title: "Exercises Example Extractions - Vasili"
+output: html_notebook
+---
+
+### Exercise 1: Add New Patterns
+Add regex patterns to extract:
+- URLs (http:// or https://)
+- Dates (MM/DD/YYYY format)
+- Zip codes (5-digit US format)
+
+### Notes:
+Regex is a pattern alnguage for matching text. You set up a search blueprint for text analysis.
+
+```{r}
+#Practice text was produced in ChatGPT
+practice_texts <- c("Visit our website at http://example.com for more info. Event on 03/15/2023. ZIP: 90210",
+    "Check https://mycompany.org or come to our office by 12/01/2022. ZIP: 10001",
+    "No links here, but the meeting is on 07/04/2021 and postal code 30303",
+    "Multiple URLs: http://foo.com and https://bar.net. Date: 11/30/2020 ZIP: 60606",
+    "Nothing relevant here, just text.")
+
+practice_texts
+
+#Regex 
+#
+practice_patterns <- list(
+  URLs = "https?://[a-z]+\\.[a-z]+",
+  Dates = "\\d{2}/\\d{2}/\\d{4}",
+  Zip = "(ZIP:|postal\\s*code)?\\s*(\\d{5})"
+)
+practice_patterns
+
+rule_practice_results <- extract_with_rules(practice_texts, practice_patterns)
+
+cat("Rule-based extraction results:\n\n")
+print(rule_practice_results)
+
+cat("Rule-Based Extraction Summary:\n")
+cat(rep("-", 50), "\n", sep = "")
+
+for (i in 1:nrow(rule_practice_results)) {
+  cat(sprintf("\nText %d:\n", i))
+  cat(sprintf("  URLs: %s\n",
+              ifelse(length(rule_practice_results$URLs[[i]]) > 0,
+                     paste(rule_practice_results$URLs[[i]], collapse = ", "),
+                     "None")))
+  cat(sprintf("  Dates: %s\n",
+              ifelse(length(rule_practice_results$Dates[[i]]) > 0,
+                     paste(rule_practice_results$Dates[[i]], collapse = ", "),
+                     "None")))
+  cat(sprintf("  Zip: %s\n",
+              ifelse(length(rule_practice_results$Zip[[i]]) > 0,
+                     paste(rule_practice_results$Zip[[i]], collapse = ", "),
+                     "None")))
+}
+```
+
+### Exercise 2: Modify LLM Prompt
+Modify the LLM extraction prompt to also extract:
+- Years of experience
+- Education level
+- Skills/expertise areas
+
+```{r}
+#Created a modified version of the sample text from 00200_toy_example_extraction.Rmd. Created through ChatGPT
+modified_sample_texts <- c(
+  "John Smith works at Acme Corp as a Data Scientist with 5 years of experience. He has a Master's degree in Computer Science. His skills include R, Python, and Machine Learning. His email is john.smith@acme.com and phone is (555) 123-4567.",
+  
+  "Contact Sarah Johnson, Senior Developer at Tech Solutions Inc. She has 8 years of experience and a Bachelor's degree in Software Engineering. Key skills: Java, SQL, AWS. Email: sarah.j@techsolutions.org, Phone: +1-555-987-6543.",
+  
+  "Dr. Michael Brown is the Head of Research at Innovation Labs. He has 15 years of experience and holds a PhD in Bioinformatics. Skills include data analysis, R, Python, and statistics. His office number is (555) 111-2222 and email is mbrown@innovation.com.",
+  
+  "Alice Wong, Marketing Manager, has 6 years of experience and a Bachelor's degree in Marketing. Her skills include SEO, content creation, and social media management. She can be reached at alice.wong@marketing.co or 555-333-4444.",
+  
+  "Professor David Lee (david.lee@university.edu) teaches at State University. He has 20 years of experience and a PhD in Education. Skills include curriculum design, teaching, and research. Call him at 555-555-5555."
+)
+
+
+# Define extraction schema
+extraction_prompt_template <- '
+Extract the following information from this text:
+- name: Person\'s full name
+- email: Email address
+- phone: Phone number
+- company: Company/organization name
+- job_title: Person\'s job title or position
+- years_of_experience: Number of years of work
+- education_level: Degree title or institution name
+- expterise_areas: Skills 
+
+Text: %s
+
+Return ONLY valid JSON in this format. Do NOT include ```json``` or any other markdown.:
+{
+  "name": "",
+  "email": "",
+  "phone": "",
+  "company": "",
+  "job_title": "",
+  "years_of_experience": "",
+  "education_level": "",
+  "expertise_areas": ""
+}
+
+If any field is not found, use an empty string "".
+'
+
+# Extract from each text
+llm_results <- list()
+
+cat("Extracting with Gemini LLM...\n")
+for (i in 1:length(modified_sample_texts)) {
+  cat(sprintf("  Processing text %d/%d...\n", i, length(modified_sample_texts)))
+
+  prompt <- sprintf(extraction_prompt_template, modified_sample_texts[i])
+
+  response <- tryCatch({
+    simple_gemini(prompt)
+  }, error = function(e) {
+    cat(sprintf("    Error: %s\n", conditionMessage(e)))
+    NULL
+  })
+
+  if (!is.null(response)) {
+    parsed <- tryCatch({
+      jsonlite::fromJSON(response)
+    }, error = function(e) {
+      cat(sprintf("    JSON parse error: %s\n", conditionMessage(e)))
+      NULL
+    })
+
+    if (!is.null(parsed)) {
+      parsed$text_id <- i
+      llm_results[[i]] <- parsed
+      cat("    ✓ Success\n")
+    }
+  }
+
+  # Small delay to avoid rate limits
+  Sys.sleep(1)
+}
+
+llm_results_df <- dplyr::bind_rows(llm_results)
+
+cat("\nLLM extraction complete\n")
+print(llm_results_df)
+```
+### Exercise 3: Create Your Own Data
+Create 3 new sample texts with different structures and test both extraction methods.
+
+"Extract data from about climate events and environmental studies:
+- Event name
+
+- Location
+
+- Date/year
+
+- Magnitude/severity
+
+- Impact metrics
+
+- Cause or contributing factors"
+```{r}
+climate_texts<- c("The 2022 Central Valley Flood affected California's agricultural regions, causing $1.2B in damages. Heavy rainfall over 10 days was the main contributor. Estimated 500,000 people were impacted.",
+
+  "A massive wildfire swept through the Amazon Rainforest in 2019, burning approximately 2.3 million hectares. Researchers identified deforestation and drought as key contributing factors. The fire released an estimated 120 megatons of CO2 into the atmosphere.",
+
+  "Event: Typhoon Hagibis (2019, Japan) | Wind Speed: 195 km/h | Rainfall: 800 mm | Damage: $15 billion | Cause: Pacific Ocean warming. Thousands of homes were flooded, and infrastructure suffered widespread disruption.")
+
+#Rule-Based
+
+climate_patterns <- list(
+  event_name = "[A-Z][a-z]+(?:\\s[A-Z][a-z]+)*",
+  location= "[A-Z][a-z]+",
+  year = "\\d{4}"
+)
+
+rule_climate_results <- extract_with_rules(climate_texts, climate_patterns)
+
+cat("Rule-based extraction results:\n\n")
+print(rule_climate_results)
+
+cat("Rule-Based Extraction Summary:\n")
+cat(rep("-", 50), "\n", sep = "")
+
+for (i in 1:nrow(rule_climate_results)) {
+  cat(sprintf("\nText %d:\n", i))
+  cat(sprintf(" Event Name: %s\n",
+              ifelse(length(rule_climate_results$event_name[[i]]) > 0,
+                     paste(rule_climate_results$event_name[[i]], collapse = ", "),
+                     "None")))
+  cat(sprintf("  Location: %s\n",
+              ifelse(length(rule_climate_results$location[[i]]) > 0,
+                     paste(rule_climate_results$location[[i]], collapse = ", "),
+                     "None")))
+  cat(sprintf("  Year: %s\n",
+              ifelse(length(rule_climate_results$year[[i]]) > 0,
+                     paste(rule_climate_results$year[[i]], collapse = ", "),
+                     "None")))
+}
+
+```
+
+
